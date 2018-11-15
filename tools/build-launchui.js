@@ -28,20 +28,22 @@ function buildLaunchUI() {
   const nodeDir = path.join( __dirname, '../deps/node' );
   const libuiDir = path.join( __dirname, '../deps/libui' );
 
-  const nodeSrc = path.join( nodeDir, process.platform == 'darwin' ? 'out/Release/libnode.57.dylib' : 'out/Release/lib.target/libnode.so.57' );
-  const nodeDest = path.join ( buildDir, process.platform == 'darwin' ? 'libnode.dylib' : 'libnode.so' );
-
+  let isMacOs = process.platform === 'darwin';
+  const dir = isMacOs ? 'out/Release' : 'out/Release/lib.target';
+  const file = fs.readdirSync(path.join(nodeDir, dir)).filter(it => it.startsWith("libnode."))[0]
+  const nodeSrc = path.join(nodeDir, dir, file);
+  const nodeDest = path.join(buildDir, isMacOs ? 'libnode.dylib' : 'libnode.so');
   if ( !fs.existsSync( nodeDest ) )
     fs.symlinkSync( nodeSrc, nodeDest );
 
-  const libuiSrc = path.join( libuiDir, process.platform == 'darwin' ? 'build/out/libui.A.dylib' : 'build/out/libui.so.0' );
-  const libuiDest = path.join ( buildDir, process.platform == 'darwin' ? 'libui.dylib' : 'libui.so' );
+  const libuiSrc = path.join( libuiDir, isMacOs ? 'build/out/libui.A.dylib' : 'build/out/libui.so.0' );
+  const libuiDest = path.join ( buildDir, isMacOs ? 'libui.dylib' : 'libui.so' );
 
   if ( !fs.existsSync( libuiDest ) )
     fs.symlinkSync( libuiSrc, libuiDest );
 
   let cmakePath = 'cmake';
-  if ( process.platform == 'darwin' && fs.existsSync( '/Applications/CMake.app/Contents/bin/cmake' ) )
+  if ( isMacOs && fs.existsSync( '/Applications/CMake.app/Contents/bin/cmake' ) )
     cmakePath = '/Applications/CMake.app/Contents/bin/cmake';
 
   let result = child_process.spawnSync( cmakePath, [ '-DCMAKE_BUILD_TYPE=Release', '../src' ], { cwd: buildDir, stdio: 'inherit' } );
