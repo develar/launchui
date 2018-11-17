@@ -1,5 +1,7 @@
 const path = require( 'path' );
 const fs = require( 'fs' );
+const os = require( 'os' );
+const { execFileSync } = require( 'child_process' );
 
 const archiver = require( 'archiver' );
 
@@ -43,9 +45,9 @@ function packageWin32( arch ) {
   if ( !fs.existsSync( packagesDir ) )
     fs.mkdirSync( packagesDir );
 
-  const zipName = 'launchui-v' + version + '-win32-' + arch + '.zip';
-
-  const output = fs.createWriteStream( path.join( packagesDir, zipName ) );
+  const zipFile = path.join( packagesDir, 'launchui-v' + version + '-win32-' + arch + '.zip' );
+  const output = fs.createWriteStream( zipFile );
+  output.once( 'close', () => create7zArchive( zipFile ) );
   const archive = archiver( 'zip', { zlib: { level: 9 } } );
 
   archive.pipe( output );
@@ -76,9 +78,10 @@ function packageDarwin() {
   if ( !fs.existsSync( packagesDir ) )
     fs.mkdirSync( packagesDir );
 
-  const zipName = 'launchui-v' + version + '-darwin-' + process.arch + '.zip';
+  const zipFile = path.join( packagesDir, 'launchui-v' + version + '-darwin-' + process.arch + '.zip' );
 
-  const output = fs.createWriteStream( path.join( packagesDir, zipName ) );
+  const output = fs.createWriteStream( zipFile );
+  output.once( 'close', () => create7zArchive( zipFile ) );
   const archive = archiver( 'zip', { zlib: { level: 9 } } );
 
   archive.pipe( output );
@@ -87,7 +90,7 @@ function packageDarwin() {
 
   archive.file( path.join( __dirname, '../src/Info.plist' ), { name: contentsDir + 'Info.plist' } );
 
-  const macosDir = contentsDir + 'MacOS/'
+  const macosDir = contentsDir + 'MacOS/';
 
   archive.file( path.join( __dirname, '../build/launchui' ), { name: macosDir + 'launchui' } );
   archive.file( path.join( __dirname, '../deps/node/out/Release/libnode.' + nodeVersion + '.dylib' ), { name: macosDir + 'libnode.' + nodeVersion + '.dylib' } );
@@ -114,9 +117,10 @@ function package() {
   if ( !fs.existsSync( packagesDir ) )
     fs.mkdirSync( packagesDir );
 
-  const zipName = 'launchui-v' + version + '-' + process.platform + '-' + process.arch + '.zip';
+  const zipFile = path.join( packagesDir, 'launchui-v' + version + '-' + process.platform + '-' + process.arch + '.zip' );
 
-  const output = fs.createWriteStream( path.join( packagesDir, zipName ) );
+  const output = fs.createWriteStream( zipFile );
+  output.once( 'close', () => create7zArchive( zipFile ) );
   const archive = archiver( 'zip', { zlib: { level: 9 } } );
 
   archive.pipe( output );
@@ -154,4 +158,41 @@ function packageCommon( archive, prefix ) {
   } );
 
   archive.file( path.join( __dirname, '../app/main.js' ), { name: prefix + 'app/main.js' } );
+}
+
+function create7zArchive( zipFile ) {
+  try {
+    execFileSync( '7za', [ 'i' ])
+  } catch ( e ) {
+    if ( e.code !== "ENOENT" ) {
+      throw e
+    }
+    console.log( '7zip not installed, 7z package not created' );
+  }
+
+  const sevenZipFile = zipFile.substring( 0, zipFile.length - '.zip'.length ) + '.7z' ;
+  console.log( `Creating ${sevenZipFile}` );
+
+  try {
+    fs.unlinkSync( sevenZipFile );
+  } catch ( e ) {
+    if ( e.code !== "ENOENT" ) {
+      throw e
+    }
+  }
+
+  const tempDir = fs.mkdtempSync( path.join( os.tmpdir(), 'launchui-stage-' ) );
+  try {
+    // on Windows 7za is not in PATH
+    const sevenZipExecutable = '7z';
+    execFileSync( sevenZipExecutable, [ 'x', zipFile ], {
+      cwd: tempDir
+    } );
+    execFileSync( sevenZipExecutable, [ 'a', '-m0=lzma2', '-mx=9', '-mfb=64', '-md=256m', '-ms=on', sevenZipFile, '.' ], {
+      cwd: tempDir
+    });
+  }
+  finally {
+    execFileSync( "rm", [ "-rf", tempDir ] )
+  }
 }
